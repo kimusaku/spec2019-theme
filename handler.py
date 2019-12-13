@@ -28,17 +28,14 @@ def user_create(event, context):
 def wallet_charge(event, context):
     user_table = boto3.resource('dynamodb').Table(os.environ['USER_TABLE'])
     history_table = boto3.resource('dynamodb').Table(os.environ['PAYMENT_HISTORY_TABLE'])
-    sqs = boto3.client('sqs')
     body = json.loads(event['body'])
     response = user_table.update_item(
         Key={
             'id': body['userId']
         },
-        AttributeUpdates={
-            'amount': {
-                'Value': body['chargeAmount'],
-                'Action': 'ADD'
-            }
+        UpdateExpression='ADD amount :chargeAmount',
+        ExpressionAttributeValues={
+            ':chargeAmount': body['chargeAmount']
         },
         ReturnValues='ALL_NEW'
     )
@@ -52,15 +49,13 @@ def wallet_charge(event, context):
         }
     )
 
-    sqs.send_message(
-        QueueUrl=os.environ['NOTIFICATION_QUEUE'],
-        MessageBody=json.dumps({
+    requests.post(os.environ['NOTIFICATION_ENDPOINT'], json={
         'transactionId': body['transactionId'],
         'userId': body['userId'],
         'chargeAmount': body['chargeAmount'],
         'totalAmount': int(response['Attributes']['amount'])
-    }))
-
+    })
+    
     return {
         'statusCode': 202,
         'body': json.dumps({'result': 'Assepted. Please wait for the notification.'})
@@ -70,18 +65,15 @@ def wallet_charge(event, context):
 def wallet_use(event, context):
     user_table = boto3.resource('dynamodb').Table(os.environ['USER_TABLE'])
     history_table = boto3.resource('dynamodb').Table(os.environ['PAYMENT_HISTORY_TABLE'])
-    sqs = boto3.client('sqs')
     body = json.loads(event['body'])
     try:
         response = user_table.update_item(
             Key={
                 'id': body['userId']
             },
-            AttributeUpdates={
-                'amount': {
-                    'Value': body['useAmount'] * -1,
-                    'Action': 'ADD'
-                }
+            UpdateExpression='ADD amount :useAmount',
+            ExpressionAttributeValues={
+                ':useAmount': body['useAmount'] * -1
             },
             ConditionExpression=boto3.dynamodb.conditions.Attr('amount').gte(body['useAmount']),
             ReturnValues='ALL_NEW'
@@ -102,15 +94,13 @@ def wallet_use(event, context):
         }
     )
 
-    sqs.send_message(
-        QueueUrl=os.environ['NOTIFICATION_QUEUE'],
-        MessageBody=json.dumps({
+    requests.post(os.environ['NOTIFICATION_ENDPOINT'], json={
         'transactionId': body['transactionId'],
         'userId': body['userId'],
         'useAmount': body['useAmount'],
         'totalAmount': int(response['Attributes']['amount'])
-    }))
-
+    })
+    
     return {
         'statusCode': 202,
         'body': json.dumps({'result': 'Assepted. Please wait for the notification.'})
@@ -120,7 +110,7 @@ def wallet_use(event, context):
 def wallet_transfer(event, context):
     user_table = boto3.resource('dynamodb').Table(os.environ['USER_TABLE'])
     history_table = boto3.resource('dynamodb').Table(os.environ['PAYMENT_HISTORY_TABLE'])
-    sqs = boto3.client('sqs')
+    # sqs = boto3.client('sqs')
     body = json.loads(event['body'])
 
     try:
@@ -128,12 +118,11 @@ def wallet_transfer(event, context):
             Key={
                 'id': body['fromUserId']
             },
-            AttributeUpdates={
-                'amount': {
-                    'Value': body['transferAmount'] * -1,
-                    'Action': 'ADD'
-                }
+            UpdateExpression='ADD amount :transferAmount',
+            ExpressionAttributeValues={
+                ':transferAmount': body['transferAmount'] * -1
             },
+            ConditionExpression=boto3.dynamodb.conditions.Attr('amount').gte(body['transferAmount']),
             ReturnValues='ALL_NEW'
         )
     except botocore.exceptions.ClientError as e:
@@ -146,11 +135,9 @@ def wallet_transfer(event, context):
         Key={
             'id': body['toUserId']
         },
-        AttributeUpdates={
-            'amount': {
-                'Value': body['transferAmount'],
-                'Action': 'ADD'
-            }
+        UpdateExpression='ADD amount :transferAmount',
+        ExpressionAttributeValues={
+            ':transferAmount': body['transferAmount']
         },
         ReturnValues='ALL_NEW'
     )
@@ -173,26 +160,20 @@ def wallet_transfer(event, context):
         }
     )
 
-    sqs.send_message(
-        QueueUrl=os.environ['NOTIFICATION_QUEUE'],
-        MessageBody=json.dumps({
+    requests.post(os.environ['NOTIFICATION_ENDPOINT'], json={
         'transactionId': body['transactionId'],
         'userId': body['fromUserId'],
         'useAmount': body['transferAmount'],
         'totalAmount': int(from_result['Attributes']['amount']),
         'transferTo': body['toUserId']
-    }))
-
-    sqs.send_message(
-        QueueUrl=os.environ['NOTIFICATION_QUEUE'],
-        MessageBody=json.dumps({
+    })
+    requests.post(os.environ['NOTIFICATION_ENDPOINT'], json={
         'transactionId': body['transactionId'],
         'userId': body['toUserId'],
         'chargeAmount': body['transferAmount'],
         'totalAmount': int(to_result['Attributes']['amount']),
         'transferFrom': body['fromUserId']
-    }))
-
+    })
     return {
         'statusCode': 202,
         'body': json.dumps({'result': 'Assepted. Please wait for the notification.'})
@@ -203,7 +184,6 @@ def get_user_summary(event, context):
     user_table = boto3.resource('dynamodb').Table(os.environ['USER_TABLE'])
     history_table = boto3.resource('dynamodb').Table(os.environ['PAYMENT_HISTORY_TABLE'])
     params = event['pathParameters']
-    print(params)
     user = user_table.get_item(
         Key={'id': params['userId']}
     )
@@ -264,7 +244,7 @@ def get_payment_history(event, context):
         if 'useAmount' in p:
             p['useAmount'] = int(p['useAmount'])
         p['locationName'] = _get_location_name(p['locationId'])
-        del p['locationId']
+        # del p['locationId']
         payment_history.append(p)
 
     return {
