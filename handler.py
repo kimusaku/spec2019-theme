@@ -174,7 +174,7 @@ def wallet_transfer(event, context):
         AttributeUpdates={
             'amount': {
                 'Value': from_total_amount,
-                'Action': 'PUT'
+                'Action': 'ADD'
             }
         }
     )
@@ -185,7 +185,7 @@ def wallet_transfer(event, context):
         AttributeUpdates={
             'amount': {
                 'Value': to_total_amount,
-                'Action': 'PUT'
+                'Action': 'ADD'
             }
         }
     )
