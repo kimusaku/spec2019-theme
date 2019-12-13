@@ -176,12 +176,6 @@ def wallet_transfer(event, context):
                 'Value': from_total_amount,
                 'Action': 'ADD'
             }
-        },
-        Expected={
-            'amount': {
-                'Value': 0,
-                'ComparisonOperator': 'LT'
-            }
         }
     )
     wallet_table.update_item(
