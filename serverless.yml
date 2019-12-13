@@ -18,6 +18,8 @@ provider:
         - "dynamodb:*"
       Resource:
         - "*"
+  logs:
+    restApi: true
 functions:
   CreateUser:
     handler: handler.user_create
